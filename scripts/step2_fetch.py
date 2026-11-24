@@ -59,7 +59,7 @@ def stage_sondes(months):
             done[s["serial"]] = s
         out.write_text("".join(json.dumps(s) + "\n" for s in done.values()))
         log.info("sondes: %d summaries for %04d-%02d (%d total)", len(new), y, m, len(done))
-        serials = [s["serial"] for s in new]
+        serials = list(dict.fromkeys(s["serial"] for s in new))  # a flight can be listed twice
         ok = 0
         with ThreadPoolExecutor(8) as ex:
             futs = {ex.submit(sondes.fetch_track, ser): ser for ser in serials}

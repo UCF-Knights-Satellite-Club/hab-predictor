@@ -16,6 +16,8 @@ import csv
 import gzip
 import io
 import json
+import os
+import threading
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -110,7 +112,7 @@ def fetch_track(serial: str, force: bool = False) -> Path:
     for k in sorted(rows):
         w.writerow(rows[k])
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
+    tmp = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
     tmp.write_bytes(gzip.compress(buf.getvalue().encode()))
     tmp.replace(path)
     return path
