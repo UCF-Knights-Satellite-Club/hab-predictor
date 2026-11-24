@@ -148,8 +148,12 @@ def main():
     ap.add_argument("--feb-years", nargs="+", type=int, default=[2026, 2025, 2024])
     ap.add_argument("--min-free-gb", type=float, default=8.0)
     ap.add_argument("--parallel", type=int, default=2)
+    ap.add_argument("--log-file", help="also append the log to this file")
     a = ap.parse_args()
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout,
+    handlers = [logging.StreamHandler(sys.stdout)]
+    if a.log_file:
+        handlers.append(logging.FileHandler(a.log_file))
+    logging.basicConfig(level=logging.INFO, handlers=handlers,
                         format="%(asctime)s %(levelname)s %(message)s")
     months = [tuple(int(x) for x in m.split("-")) for m in a.months]
     log.info("data dir %s", data_dir())
