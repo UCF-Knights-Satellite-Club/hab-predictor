@@ -81,6 +81,8 @@ def summaries(sites, months: list[tuple[int, int]], workers: int = 16) -> list[d
             keys += list_keys(f"launchsites/{site}/{y:04d}/{m:02d}/")
     with ThreadPoolExecutor(workers) as ex:
         out = list(ex.map(fetch_summary, keys))
+    for key, s in zip(keys, out):
+        s["site"] = key.split("/")[1]  # frames don't always carry launch_site
     return out
 
 
