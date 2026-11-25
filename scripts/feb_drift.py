@@ -4,8 +4,9 @@ For every February day of the chosen years, fly a grid of launch sites with GFS
 12Z near-analysis winds (f000-f008, fetched by step2_fetch.py stage ``feb``) and
 record where each flight lands. Reports, per launch site and flight profile:
 
-* P(land): fraction of days the landing point is on land (Natural Earth mask, so
-  the Indian River Lagoon counts as land; step 3 refines this);
+* P(land): fraction of days the landing point is on land (Natural Earth mask);
+* P(rec): lands somewhere recoverable (tier hard or better in the step 3 raster,
+  scripts/build_recover.py), and P(ok): tier ok or easy, i.e. no worse than KAOS-1;
 * median and 90th-percentile drift distance.
 
     uv run python scripts/feb_drift.py [--years 2024 2025 2026] [--out out/feb]
@@ -20,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
+from habpred import recover as R
 from habpred.landmask import LandMask
 from habpred.solver import haversine_km, predict_many
 from habpred.sources import gfs
@@ -64,6 +66,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     mask = LandMask.build()
+    rec = R.Recoverability.load()
     glat = np.arange(GRID["lat"][0], GRID["lat"][1] + 1e-9, GRID["step"])
     glon = np.arange(GRID["lon"][0], GRID["lon"][1] + 1e-9, GRID["step"])
     LA, LO = np.meshgrid(glat, glon, indexing="ij")
@@ -105,26 +108,37 @@ def main():
         lon = np.array(res[p]["lon"])
         ok = np.array(res[p]["ok"])
         land = ok & mask.is_land(lat, lon)  # out-of-domain = far offshore
+        tier = np.where(ok, rec.tier_at(lat, lon), R.NO)
+        i, j, inside = rec.index(lat, lon)
+        outside_land = land & ~inside
         drift = np.where(ok, haversine_km(site_lat[None], site_lon[None], lat, lon), np.inf)
-        summary[p] = dict(p_land=land.mean(axis=0), med=np.median(drift, axis=0),
+        summary[p] = dict(p_land=land.mean(axis=0), p_rec=(tier >= R.HARD).mean(axis=0),
+                          p_ok=(tier >= R.OK).mean(axis=0), med=np.median(drift, axis=0),
                           p90=np.percentile(drift, 90, axis=0), lat=lat, lon=lon, land=land)
+        print(f"{p}: {outside_land.mean():.1%} of landings are on land outside the "
+              f"recoverability raster (counted as not recoverable)")
 
     # named sites table
     rows = []
-    print(f"{'site':26s}" + "".join(f"{p + ' P(land)':>15s}{p + ' med km':>13s}{'p90':>6s}"
-                                    for p in PROFILES))
+    print(f"\n{'site':24s}" + "".join(f"{'|':>3s} {p:6s}{'land':>6s}{'rec':>5s}{'ok':>5s}"
+                                        f"{'med':>6s}{'p90':>5s}" for p in PROFILES))
     for k, n in enumerate(names):
         i = n_grid + k
-        line = f"{n:26s}"
+        line = f"{n[:24]:24s}"
         row = {"site": n, "lat": site_lat[i], "lon": site_lon[i]}
         for p in PROFILES:
             s = summary[p]
-            line += f"{s['p_land'][i]:15.0%}{s['med'][i]:13.0f}{s['p90'][i]:6.0f}"
+            line += (f"{'|':>3s} {'':6s}{s['p_land'][i]:6.0%}{s['p_rec'][i]:5.0%}{s['p_ok'][i]:5.0%}"
+                     f"{s['med'][i]:6.0f}{s['p90'][i]:5.0f}")
             row.update({f"{p}_p_land": round(float(s["p_land"][i]), 3),
+                        f"{p}_p_rec": round(float(s["p_rec"][i]), 3),
+                        f"{p}_p_ok": round(float(s["p_ok"][i]), 3),
                         f"{p}_median_km": round(float(s["med"][i]), 1),
                         f"{p}_p90_km": round(float(s["p90"][i]), 1)})
         rows.append(row)
         print(line)
+    print("(land: any land; rec: tier hard+; ok: tier ok/easy, no worse than KAOS-1; "
+          "med/p90: drift km)")
     with open(out / "named_sites.csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
         w.writeheader()
@@ -134,12 +148,13 @@ def main():
     with open(out / "grid.csv", "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["lat", "lon", "launch_on_land"] + [f"{p}_{m}" for p in PROFILES
-                                                       for m in ("p_land", "median_km", "p90_km")])
+                                                       for m in ("p_land", "p_rec", "p_ok",
+                                                                 "median_km", "p90_km")])
         on_land = mask.is_land(site_lat[:n_grid], site_lon[:n_grid])
         for i in range(n_grid):
             w.writerow([f"{site_lat[i]:.3f}", f"{site_lon[i]:.3f}", int(on_land[i])] +
                        [f"{summary[p][m][i]:.3f}" for p in PROFILES
-                        for m in ("p_land", "med", "p90")])
+                        for m in ("p_land", "p_rec", "p_ok", "med", "p90")])
     plot(out, mask, glat, glon, n_grid, summary, site_lat, site_lon, names, used)
 
 
@@ -153,21 +168,23 @@ def plot(out, mask, glat, glon, n_grid, summary, site_lat, site_lon, names, used
     mlon = mask.lon0 + mask.res * (np.arange(mask.land.shape[1]) + 0.5)
     launch_land = mask.is_land(site_lat[:n_grid], site_lon[:n_grid]).reshape(shape)
     for p, s in summary.items():
-        fig, axes = plt.subplots(1, 3, figsize=(20, 7.2))
-        # 1: P(land) by launch site
-        ax = axes[0]
-        z = np.where(launch_land, s["p_land"][:n_grid].reshape(shape), np.nan)
-        im = ax.pcolormesh(glon, glat, z, cmap="RdYlGn", vmin=0, vmax=1, shading="nearest")
-        fig.colorbar(im, ax=ax, shrink=0.8, label="P(lands on land)")
-        ax.set_title("Chance of a land landing, by launch site")
-        # 2: median drift
-        ax = axes[1]
-        z = np.where(launch_land, s["med"][:n_grid].reshape(shape), np.nan)
-        im = ax.pcolormesh(glon, glat, z, cmap="viridis", shading="nearest")
-        fig.colorbar(im, ax=ax, shrink=0.8, label="median drift km")
-        ax.set_title("Median drift distance")
-        # 3: landing scatter for named sites
-        ax = axes[2]
+        fig, axes2 = plt.subplots(2, 3, figsize=(20, 13))
+        axes = axes2.ravel()
+        for ax, key, cm, label, title in (
+                (axes[0], "p_land", "RdYlGn", "P(lands on land)", "Chance of a land landing"),
+                (axes[1], "p_rec", "RdYlGn", "P(tier hard or better)",
+                 "Chance of a recoverable landing (hard+)"),
+                (axes[2], "p_ok", "RdYlGn", "P(tier ok or easy)",
+                 "Chance of an ok/easy landing (<= KAOS-1 effort)"),
+                (axes[3], "med", "viridis", "median drift km", "Median drift distance"),
+                (axes[4], "p90", "viridis", "p90 drift km", "90th percentile drift distance")):
+            z = np.where(launch_land, s[key][:n_grid].reshape(shape), np.nan)
+            kw = dict(vmin=0, vmax=1) if key.startswith("p_") else {}
+            im = ax.pcolormesh(glon, glat, z, cmap=cm, shading="nearest", **kw)
+            fig.colorbar(im, ax=ax, shrink=0.8, label=label)
+            ax.set_title(title)
+        # 6: landing scatter for named sites
+        ax = axes[5]
         for k, n in enumerate(names):
             i = n_grid + k
             ax.scatter(s["lon"][:, i], s["lat"][:, i], s=4, alpha=0.5, label=n)
@@ -179,8 +196,8 @@ def plot(out, mask, glat, glon, n_grid, summary, site_lat, site_lon, names, used
             for k, n in enumerate(names):
                 ax.plot(site_lon[n_grid + k], site_lat[n_grid + k], "k^", ms=4)
             ax.set_aspect(1 / np.cos(np.radians(28.5)))
-            ax.set_xlim(-83.6, -78.5) if ax is axes[2] else ax.set_xlim(glon[0] - .3, glon[-1] + .3)
-            ax.set_ylim(26.5, 31.0) if ax is axes[2] else ax.set_ylim(glat[0] - .3, glat[-1] + .3)
+            ax.set_xlim(-83.6, -78.5) if ax is axes[5] else ax.set_xlim(glon[0] - .3, glon[-1] + .3)
+            ax.set_ylim(26.5, 31.0) if ax is axes[5] else ax.set_ylim(glat[0] - .3, glat[-1] + .3)
         ar, burst, dr = PROFILES[p]
         fig.suptitle(f"February drift, profile '{p}' (ascent {ar} m/s, burst {burst / 1000:.1f} km, "
                      f"descent {dr} m/s), {used} days x {len(LAUNCH_HOURS_UTC)} launch times, "

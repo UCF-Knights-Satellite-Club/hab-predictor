@@ -59,6 +59,41 @@ calm summer case, not a statistic.
 cycle. With Tawhiri-like settings (0.5 deg, 3-hourly, 60 s steps) landings agree to
 1.1 to 1.6 km over 135 to 189 km of drift (about 1%), with identical flight times.
 
+## Landing recoverability raster
+
+`scripts/build_recover.py` builds a ~40 m raster of the peninsula (26.0-30.8 N,
+83.8-79.9 W) that says whether a landing spot is recoverable. Inputs, all public:
+
+| Source | Use | Get it |
+|---|---|---|
+| NLCD 2021 land cover | Base cover class and walking pace | fetched automatically (MRLC WCS) |
+| National Wetlands Inventory | Swamp vs passable wet ground (water regime) | `data/nwi/FL_geodatabase_wetlands.zip` from the [USFWS state downloads](https://www.fws.gov/program/national-wetlands-inventory/download-state-wetlands-data) |
+| OpenStreetMap (Geofabrik) | Roads, tracks and paths; military, airports, prisons, launch complexes | `data/osm/florida-latest.osm.pbf` from [Geofabrik](https://download.geofabrik.de/north-america/us/florida.html) |
+
+Rules, calibrated on the KAOS-1 recovery (Hal Scott: ~300 m off trail took 30 min
+through wet flatwoods that NLCD calls "woody wetlands" but NWI leaves unmapped):
+
+- **Swamp (not recoverable):** NWI palustrine wetlands that are seasonally flooded
+  or wetter (regimes C, E, F, G, H, K...), tidal marsh and mangrove. Temporarily
+  flooded or saturated wetlands (A, B, J) are passable wet ground like KAOS-1's.
+- **Walking time** from the nearest road, track or path (least-cost path that avoids
+  swamp, water and restricted areas). Pace in min/km: wet ground 100, scrub 60,
+  forest 40, open 20, developed 15.
+- **Tiers:** easy <= 15 min, ok <= 40 min (KAOS-1 plus margin; the raster puts it at
+  36 min), hard <= 90 min, otherwise no. Thresholds are applied on load, no rebuild needed.
+  Dense urban is capped at hard (roofs, power lines). Water, swamp and restricted
+  ground are no.
+
+Outputs: `data/masks/recover_*.npz` (loaded by `habpred.recover.Recoverability`)
+and GeoTIFFs plus PNG maps in `out/recover/`. Private land is not modelled: most
+dry land is somebody's ranch, so a landing there means asking permission.
+
+Raster limits: building needs ~24 GB RAM (desktop, not the VPS). Every OSM
+aerodrome counts as restricted, including ranch grass strips. Kennedy Space Center
+outside the named launch complexes is not restricted, because OSM maps it as one
+area with the public wildlife refuge. Trail length isn't limited (Hal Scott was
+~5 km on trail).
+
 ## Layout
 
 | Path | What |
@@ -68,6 +103,8 @@ cycle. With Tawhiri-like settings (0.5 deg, 3-hourly, 60 s steps) landings agree
 | `src/habpred/atmosphere.py` | Density model for descent-rate scaling |
 | `src/habpred/sources/` | GFS and HRRR downloaders (byte-range GRIB from AWS) |
 | `src/habpred/sondehub.py` | SondeHub API client, for comparisons only |
+| `src/habpred/recover.py` | Landing recoverability raster (build and lookup) |
+| `src/habpred/landmask.py` | Coarse Natural Earth land/water mask |
 | `scripts/` | Hindcasts and comparisons |
 
 ## Known limits

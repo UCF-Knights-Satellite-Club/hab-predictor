@@ -112,3 +112,35 @@ def test_rate_profiles():
     f = predict(fld, T0, 28.5, -81.2, 0.0, asc, 30000.0, desc, dt=10.0)
     assert f.burst[0] - T0.timestamp() == pytest.approx(10000 / 5 + 20000 / 8, abs=1.0)
     assert f.t[-1] - f.burst[0] == pytest.approx(30000 / 6, abs=0.1)
+
+
+def test_nwi_class():
+    from habpred import recover as R
+    assert R.nwi_class("PFO2F") == R.SWAMP       # cypress, semipermanent (next to KAOS-1)
+    assert R.nwi_class("PEM1/SS1C") == R.SWAMP   # seasonally flooded marsh
+    assert R.nwi_class("PFO4A") == R.WET         # temporarily flooded pine
+    assert R.nwi_class("PSS1Ad") == R.WET        # modifier suffix ignored
+    assert R.nwi_class("PUBHx") == R.WATER       # pond
+    assert R.nwi_class("L1UBHh") == R.WATER
+    assert R.nwi_class("E2EM1P") == R.SWAMP      # tidal marsh
+    assert R.nwi_class("R4SBC") == R.WET         # intermittent streambed
+    assert R.nwi_class("") == 0
+
+
+def test_recoverability_lookup(tmp_path):
+    from habpred import recover as R
+    cover = np.array([[R.WATER, R.OPEN, R.OPEN], [R.SWAMP, R.WET, R.FOREST]], np.uint8)
+    walk = np.array([[65535, 50, 200], [65535, 300, 1000]], np.uint16)
+    tier = np.array([[R.NO, R.EASY, R.OK], [R.NO, R.OK, R.NO]], np.uint8)
+    road = np.zeros((2, 3), bool)
+    road[0, 1] = True
+    rec = R.Recoverability(29.0, -81.0, 0.5, cover, walk, tier, road)
+    lat = np.array([28.9, 28.9, 28.3, 27.0])
+    lon = np.array([-80.9, -80.4, -79.6, -80.4])
+    assert rec.tier_at(lat, lon).tolist() == [R.NO, R.EASY, R.NO, R.NO]  # last is outside
+    assert rec.cover_at(lat[:3], lon[:3]).tolist() == [R.WATER, R.OPEN, R.FOREST]
+    w = rec.walk_min_at(lat, lon)
+    assert np.isinf(w[0]) and w[1] == 5.0 and np.isinf(w[3])
+    rec.save(tmp_path / "r.npz")
+    back = R.Recoverability.load(tmp_path / "r.npz")
+    assert (back.road == road).all() and (back.tier == tier).all() and back.res == 0.5
