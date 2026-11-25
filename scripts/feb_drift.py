@@ -51,6 +51,7 @@ NAMED = {
     "USF Tampa": (28.0618, -82.4138),
     "Adams Middle": (28.0424, -82.4658),
     "Middleton High": (27.9907, -82.4320),
+    "Ruskin NWS (72210)": (27.7054, -82.4007),  # Tampa Bay radiosonde site
 }
 
 
