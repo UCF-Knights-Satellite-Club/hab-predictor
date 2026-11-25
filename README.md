@@ -23,6 +23,14 @@ uv run pytest
 ```
 
 Downloaded weather data is cached under `data/` (override with `HABPRED_DATA`).
+
+**Skip the downloads:** club members can get everything used so far (11 GB: cropped
+GFS and HRRR, radiosonde tracks, the built recoverability raster and its NLCD, NWI
+and OSM sources) from the KSC - KAOS shared drive, folder *Flight Prediction Data*.
+Download what you need into `data/` keeping the folder names, then run
+`cd data && for f in gfs/*.tar hrrr/*.tar *.tar *.tar.gz; do tar -xf "$f" && rm "$f"; done`.
+The folder's README.txt lists what each archive holds. `scripts/pack_data.sh`
+rebuilds the archives from a local `data/`.
 A GFS forecast hour cropped to Florida is ~1 MB on disk (~140 MB downloaded); an
 HRRR hour is ~75 MB on disk (~76 MB downloaded). Data comes from NOAA's open data
 buckets on AWS (`noaa-gfs-bdp-pds`, `noaa-hrrr-bdp-pds`), which hold years of archive.
