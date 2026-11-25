@@ -53,6 +53,14 @@ NAMED = {
     "Middleton High": (27.9907, -82.4320),
     "Ruskin NWS (72210)": (27.7054, -82.4007),  # Tampa Bay radiosonde site
 }
+COUNTY = {
+    "Econ River WA (KAOS-1)": "Orange", "Clermont": "Lake", "Bushnell": "Sumter",
+    "Brooksville": "Hernando", "Inverness": "Citrus", "Ocala": "Marion", "Dade City": "Pasco",
+    "Lakeland": "Polk", "Lake Wales": "Polk", "Sebring": "Highlands",
+    "Plant City": "Hillsborough", "MOSI": "Hillsborough", "USF Tampa": "Hillsborough",
+    "Adams Middle": "Hillsborough", "Middleton High": "Hillsborough",
+    "Ruskin NWS (72210)": "Hillsborough",
+}
 
 
 def load_day(day: datetime) -> WindField | None:
@@ -131,7 +139,7 @@ def main():
     for k, n in enumerate(names):
         i = n_grid + k
         line = f"{n[:24]:24s}"
-        row = {"site": n, "lat": site_lat[i], "lon": site_lon[i]}
+        row = {"site": n, "county": COUNTY[n], "lat": site_lat[i], "lon": site_lon[i]}
         for p in PROFILES:
             s = summary[p]
             line += (f"{'|':>3s} {'':6s}{s['p_land'][i]:6.0%}{s['p_rec'][i]:5.0%}{s['p_ok'][i]:5.0%}"
@@ -189,19 +197,28 @@ def plot(out, mask, glat, glon, n_grid, summary, site_lat, site_lon, names, used
             im = ax.pcolormesh(glon, glat, z, cmap=cm, shading="nearest", **kw)
             fig.colorbar(im, ax=ax, shrink=0.8, label=label)
             ax.set_title(title)
-        # 6: landing scatter for named sites
+        # 6: landing scatter for named sites, one colour per county
         ax = axes[5]
+        counties = list(dict.fromkeys(COUNTY[n] for n in names))
+        color = {c: plt.cm.tab10(j % 10) for j, c in enumerate(counties)}
+        for c in counties:
+            idx = [n_grid + k for k, n in enumerate(names) if COUNTY[n] == c]
+            members = [n for n in names if COUNTY[n] == c]
+            label = f"{c}: {', '.join(members)}" if len(members) <= 2 else \
+                f"{c}: {len(members)} sites"
+            ax.scatter(s["lon"][:, idx].ravel(), s["lat"][:, idx].ravel(), s=4, alpha=0.5,
+                       label=label, color=color[c])
         for k, n in enumerate(names):
-            i = n_grid + k
-            ax.scatter(s["lon"][:, i], s["lat"][:, i], s=4, alpha=0.5, label=n,
-                       color=plt.cm.tab20(k % 20))
-        ax.set_title("Landing points from named sites (all days)")
+            ax.plot(site_lon[n_grid + k], site_lat[n_grid + k], "^", ms=7,
+                    color=color[COUNTY[n]], mec="k", mew=0.6, zorder=5)
+        ax.set_title("Landing points from named sites by launch county (all days)")
         ax.legend(fontsize=6, markerscale=3, loc="lower left")
         for ax in axes:
             ax.contour(mlon, mlat, mask.land.astype(float), levels=[0.5], colors="k",
                        linewidths=0.6)
-            for k, n in enumerate(names):
-                ax.plot(site_lon[n_grid + k], site_lat[n_grid + k], "k^", ms=4)
+            if ax is not axes[5]:
+                for k, n in enumerate(names):
+                    ax.plot(site_lon[n_grid + k], site_lat[n_grid + k], "k^", ms=4)
             ax.set_aspect(1 / np.cos(np.radians(28.5)))
             ax.set_xlim(-83.6, -78.5) if ax is axes[5] else ax.set_xlim(glon[0] - .3, glon[-1] + .3)
             ax.set_ylim(26.5, 31.0) if ax is axes[5] else ax.set_ylim(glat[0] - .3, glat[-1] + .3)
