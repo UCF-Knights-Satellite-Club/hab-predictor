@@ -139,7 +139,7 @@ and scores each landing against the recoverability raster. Profiles: `kaos1`
 | MOSI | 82% | 52% | 41% | 129 / 158 km |
 | Adams Middle | 82% | 46% | 49% | 129 / 158 km |
 | Ruskin NWS | 87% | 54% | 39% | 126 / 155 km |
-| Best Bradenton/Sarasota cells | 90-96% | 65-71% | 49-60% | ~125 / ~155 km |
+| Best Bradenton/Sarasota cells | 85-96% | 65-71% | 49-60% | ~125 / ~155 km |
 
 "Ok/easy" means no harder to reach than KAOS-1. With 170 launches per site the
 percentages are good to about +/-4 points. The full table is in
