@@ -55,6 +55,22 @@ profile (SPOT track and onboard pressure log). Landing errors: GFS 1.7 to 7.3 km
 HRRR+GFS 1.5 to 4.0 km (2 to 20 h lead). KAOS-1 drifted only 16 km, so this is one
 calm summer case, not a statistic.
 
+![KAOS-1 hindcast: SPOT track vs predictions from 14 GFS and 4 HRRR+GFS cycles](docs/img/kaos1_hindcast.png)
+
+`scripts/sonde_hindcast.py`: 577 Florida radiosondes (Dec 2025 to Mar 2026, Tampa
+Bay, Cape Canaveral, Jacksonville and Miami) re-run from their first fix with GFS
+forecasts issued 3, 27 and 51 hours before launch, scored at the last fix heard on
+descent. Median drift 140 km.
+
+| Forecast lead | Error, sonde's own climb profile (median / 90th pct) | Error, constant climb rate |
+|---|---|---|
+| 6 h | 4.1 / 8.0 km (2.9% of drift) | 6.8 / 15.1 km |
+| 30 h | 6.4 / 12.4 km (4.5%) | 8.3 / 17.9 km |
+| 54 h | 10.5 / 21.3 km (7.3%) | 11.9 / 25.9 km |
+
+Using one mean climb rate costs about as much as two extra days of forecast lead,
+so the shape of the ascent profile matters in winter jet conditions.
+
 `scripts/compare_sondehub.py`: same inputs as the SondeHub predictor on the same GFS
 cycle. With Tawhiri-like settings (0.5 deg, 3-hourly, 60 s steps) landings agree to
 1.1 to 1.6 km over 135 to 189 km of drift (about 1%), with identical flight times.
@@ -93,6 +109,44 @@ aerodrome counts as restricted, including ranch grass strips. Kennedy Space Cent
 outside the named launch complexes is not restricted, because OSM maps it as one
 area with the public wildlife refuge. Trail length isn't limited (Hal Scott was
 ~5 km on trail).
+
+![Recoverability tier and land cover across the peninsula](docs/img/recover_overview.png)
+
+Close-ups: the KAOS-1 landing at Hal Scott (red star), east Orlando and the Econ
+River, and the Indian River Lagoon and Cape. Dots are mapped roads and trails.
+
+![Recoverability close-ups around Hal Scott, east Orlando and the Cape](docs/img/recover_zooms.png)
+
+## February launch sites
+
+`scripts/feb_drift.py` flies a 0.05 deg grid of launch sites plus named sites on
+every February day of 2024 to 2026 (GFS 12Z near-analysis, 9 and 11 am EST launches)
+and scores each landing against the recoverability raster. Profiles: `kaos1`
+(7.4 m/s ascent, 33.9 km burst) and `slow` (5 m/s, 30 km).
+
+| Launch site | Lands on land | Ok/easy, kaos1 | Ok/easy, slow | Median drift (kaos1 / slow) |
+|---|---|---|---|---|
+| Econ River (KAOS-1) | 4% | 2% | 3% | 136 / 166 km |
+| Brooksville | 73% | 42% | 34% | 132 / 165 km |
+| MOSI | 82% | 52% | 41% | 129 / 158 km |
+| Adams Middle | 82% | 46% | 49% | 129 / 158 km |
+| Ruskin NWS | 87% | 54% | 39% | 126 / 155 km |
+| Best Bradenton/Sarasota cells | 90-96% | 65-71% | 49-60% | ~125 / ~155 km |
+
+"Ok/easy" means no harder to reach than KAOS-1. With 170 launches per site the
+percentages are good to about +/-4 points. The full table is in
+`out/feb/named_sites.csv`.
+
+![February drift, kaos1 profile](docs/img/feb_drift_kaos1.png)
+
+<details><summary>Slow profile (5 m/s, 30 km burst)</summary>
+
+![February drift, slow profile](docs/img/feb_drift_slow.png)
+
+</details>
+
+Pictures in `docs/img/` are snapshots; rerun the scripts and copy from `out/` to
+refresh them.
 
 ## Layout
 
