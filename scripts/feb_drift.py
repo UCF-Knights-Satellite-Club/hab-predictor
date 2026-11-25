@@ -46,6 +46,11 @@ NAMED = {
     "Lake Wales": (27.90, -81.59),
     "Sebring": (27.50, -81.44),
     "Plant City": (28.02, -82.12),
+    # Tampa outreach sites (OSM centroids)
+    "MOSI": (28.0537, -82.4046),
+    "USF Tampa": (28.0618, -82.4138),
+    "Adams Middle": (28.0424, -82.4658),
+    "Middleton High": (27.9907, -82.4320),
 }
 
 
@@ -187,7 +192,8 @@ def plot(out, mask, glat, glon, n_grid, summary, site_lat, site_lon, names, used
         ax = axes[5]
         for k, n in enumerate(names):
             i = n_grid + k
-            ax.scatter(s["lon"][:, i], s["lat"][:, i], s=4, alpha=0.5, label=n)
+            ax.scatter(s["lon"][:, i], s["lat"][:, i], s=4, alpha=0.5, label=n,
+                       color=plt.cm.tab20(k % 20))
         ax.set_title("Landing points from named sites (all days)")
         ax.legend(fontsize=6, markerscale=3, loc="lower left")
         for ax in axes:
