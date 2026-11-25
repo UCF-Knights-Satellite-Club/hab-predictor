@@ -144,3 +144,30 @@ def test_recoverability_lookup(tmp_path):
     rec.save(tmp_path / "r.npz")
     back = R.Recoverability.load(tmp_path / "r.npz")
     assert (back.road == road).all() and (back.tier == tier).all() and back.res == 0.5
+
+
+def test_residual_roundtrip():
+    from habpred.montecarlo import apply_residual, residual_frame
+    lat0, lon0 = 28.0, -82.4
+    plat, plon = 28.3, -81.0  # predicted landing, drift east-north-east
+    tlat, tlon = 28.25, -80.9  # truth
+    along, cross, d = residual_frame(lat0, lon0, plat, plon, tlat, tlon)
+    assert along > 0 and cross < 0  # truth is further along and to the right
+    rlat, rlon = apply_residual(lat0, lon0, np.array([plat]), np.array([plon]), along, cross)
+    assert rlat[0] == pytest.approx(tlat, abs=1e-6)
+    assert rlon[0] == pytest.approx(tlon, abs=1e-6)
+
+
+def test_predict_many_ascent_tables():
+    from habpred.montecarlo import Z_GRID, normalise_shape
+    fld = make_field(lambda t, h, y, x: 5.0 + 0 * h, lambda t, h, y, x: 0 * h)
+    const = predict_many(fld, T0.timestamp(), 28.5, -81.2, 20.0, 5.0, 30000.0, 5.0, 20.0)
+    flat = predict_many(fld, T0.timestamp(), 28.5, -81.2, 20.0, np.full(Z_GRID.size, 5.0),
+                        30000.0, 5.0, 20.0, ascent_z=Z_GRID)
+    assert flat[0, 3] == pytest.approx(const[0, 3], abs=1.0)  # same burst time
+    # a shape that speeds up with height, scaled to the same mean rate, bursts at the same time
+    shape = normalise_shape(Z_GRID, 4.0 + Z_GRID / 10000.0)
+    rows = np.stack([5.0 * shape, 5.0 * shape])
+    r = predict_many(fld, [T0.timestamp()] * 2, 28.5, -81.2, 20.0, rows, 30000.0, 5.0, 20.0,
+                     ascent_z=Z_GRID)
+    assert r[0, 3] - T0.timestamp() == pytest.approx(const[0, 3] - T0.timestamp(), rel=0.03)

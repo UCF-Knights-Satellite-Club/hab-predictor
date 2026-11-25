@@ -132,17 +132,17 @@ def integrate(low, high, z_lo, z_hi, t0, lat0, lon0, alt0, rates, burst_alt,
 
 
 @njit(parallel=True, cache=True)
-def landings(low, high, z_lo, z_hi, t0, lat0, lon0, alt0, ascent_rate, burst_alt,
+def landings(low, high, z_lo, z_hi, t0, lat0, lon0, alt0, asc_z, asc_r, burst_alt,
              descent_v0, ground_alt, dt, n_buf):
-    """Run many flights in parallel. All parameter arguments are 1-D arrays of equal
-    length. Returns an [N, 5] array of (t, lat, lon, burst_t, status)."""
+    """Run many flights in parallel. Per-run parameters are 1-D arrays of length N;
+    the ascent rate is a table on the shared altitude grid ``asc_z`` [K] with one row
+    per run in ``asc_r`` [N, K] (K = 1 for a constant rate).
+    Returns an [N, 5] array of (t, lat, lon, burst_t, status)."""
     n_runs = t0.shape[0]
     res = np.empty((n_runs, 5))
     for i in prange(n_runs):
         buf = np.empty((n_buf, 4))
-        asc_z = np.zeros(1)
-        asc_r = np.full(1, ascent_rate[i])
-        rates = (asc_z, asc_r, descent_v0[i], np.empty(0), np.empty(0))
+        rates = (asc_z, np.ascontiguousarray(asc_r[i]), descent_v0[i], np.empty(0), np.empty(0))
         n, b, st = integrate(low, high, z_lo, z_hi, t0[i], lat0[i], lon0[i], alt0[i],
                              rates, burst_alt[i], ground_alt[i], dt, buf)
         res[i, 0] = buf[n - 1, 0]
@@ -223,14 +223,28 @@ def predict(wind: WindField, launch_time: datetime, lat: float, lon: float, laun
 
 def predict_many(wind: WindField, t0, lat, lon, launch_alt, ascent_rate, burst_alt,
                  descent_rate, ground_alt, dt: float = 30.0, upper: WindField | None = None,
-                 blend: tuple[float, float] = (18000.0, 20000.0), max_hours: float = 12.0):
-    """Vectorised landings. Scalars are broadcast; returns [N, 5] (t, lat, lon, burst_t, status)."""
+                 blend: tuple[float, float] = (18000.0, 20000.0), max_hours: float = 12.0,
+                 ascent_z=None):
+    """Vectorised landings. Scalars are broadcast; returns [N, 5] (t, lat, lon, burst_t, status).
+
+    ``ascent_rate`` is a rate per run, or with ``ascent_z`` (altitude grid [K], m) a
+    table of rates on that grid: [K] shared by all runs or [N, K] one row per run.
+    """
     arrs = np.broadcast_arrays(*[np.asarray(a, dtype=np.float64) for a in
-                                 (t0, lat, lon, launch_alt, ascent_rate, burst_alt,
-                                  descent_rate, ground_alt)])
-    arrs = [np.ascontiguousarray(a.ravel()) for a in arrs]
+                                 (t0, lat, lon, launch_alt, burst_alt, descent_rate, ground_alt)])
+    t0, lat, lon, launch_alt, burst_alt, descent_rate, ground_alt = \
+        [np.ascontiguousarray(a.ravel()) for a in arrs]
+    n = t0.shape[0]
+    if ascent_z is None:
+        asc_z = np.zeros(1)
+        asc_r = np.broadcast_to(np.asarray(ascent_rate, dtype=np.float64).reshape(-1, 1), (n, 1))
+    else:
+        asc_z = np.ascontiguousarray(ascent_z, dtype=np.float64)
+        asc_r = np.broadcast_to(np.asarray(ascent_rate, dtype=np.float64), (n, asc_z.size))
+    asc_r = np.ascontiguousarray(asc_r)
     low, high, z_lo, z_hi = _sources(wind, upper, blend)
-    return landings(low, high, z_lo, z_hi, *arrs, dt, int(max_hours * 3600 / dt) + 10)
+    return landings(low, high, z_lo, z_hi, t0, lat, lon, launch_alt, asc_z, asc_r, burst_alt,
+                    descent_rate, ground_alt, dt, int(max_hours * 3600 / dt) + 10)
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
