@@ -8,11 +8,15 @@ Stages (each one resumable; finished downloads are skipped on restart):
    Near-analysis winds for a quick February drift climatology.
 3. ``sonde-gfs``: for every sonde flight, the GFS forecast hours covering the
    flight from cycles issued about 3-9 h, 27-33 h and 51-57 h before launch.
+4. ``daily``: GFS 12Z f000-f008 for every day from --daily-from to --daily-to
+   (year-round drift climatology; same files as ``feb``). Newest first, Februaries
+   first of all.
 
 Usage (defaults are the plan's first batch):
     uv run python scripts/step2_fetch.py [--stages sondes feb sonde-gfs]
         [--months 2026-02 2026-01 2026-03 2025-12] [--feb-years 2026 2025 2024]
         [--min-free-gb 8] [--parallel 2]
+    uv run python scripts/step2_fetch.py --stages daily --daily-from 2024-11-25
 """
 
 from __future__ import annotations
@@ -105,6 +109,16 @@ def plan_feb(years) -> list[tuple[datetime, int]]:
     return jobs
 
 
+def plan_daily(start: datetime, end: datetime) -> list[tuple[datetime, int]]:
+    days = []
+    d = start.replace(hour=12, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    while d <= end.replace(tzinfo=timezone.utc):
+        days.append(d)
+        d += timedelta(days=1)
+    days.sort(key=lambda d: (d.month != 2, -d.timestamp()))
+    return [(d, fh) for d in days for fh in range(0, 9)]
+
+
 def run_gfs(name, jobs, parallel, min_free_gb):
     total = len(jobs)
     todo = [j for j in jobs if not gfs._cache_path(j[0], j[1], gfs.DEFAULT_BBOX).exists()]
@@ -146,6 +160,9 @@ def main():
     ap.add_argument("--stages", nargs="+", default=["sondes", "feb", "sonde-gfs"])
     ap.add_argument("--months", nargs="+", default=["2026-02", "2026-01", "2026-03", "2025-12"])
     ap.add_argument("--feb-years", nargs="+", type=int, default=[2026, 2025, 2024])
+    ap.add_argument("--daily-from", type=datetime.fromisoformat)
+    ap.add_argument("--daily-to", type=datetime.fromisoformat,
+                    help="last day (default: yesterday)")
     ap.add_argument("--min-free-gb", type=float, default=8.0)
     ap.add_argument("--parallel", type=int, default=2)
     ap.add_argument("--log-file", help="also append the log to this file")
@@ -173,6 +190,9 @@ def main():
             # February flights first so the most useful results arrive soonest
             summ.sort(key=lambda s: (launch_estimate(s).month != 2, s["first_time"]))
             run_gfs("sonde-gfs", plan_sonde_gfs(summ), a.parallel, a.min_free_gb)
+        if "daily" in a.stages:
+            end = a.daily_to or datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+            run_gfs("daily", plan_daily(a.daily_from, end), a.parallel, a.min_free_gb)
     except DiskFull as e:
         log.error("%s", e)
         sys.exit(3)

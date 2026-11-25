@@ -156,6 +156,43 @@ percentages are good to about +/-4 points. The full table is in
 Pictures in `docs/img/` are snapshots; rerun the scripts and copy from `out/` to
 refresh them.
 
+## Monte Carlo: how sure is a launch?
+
+`scripts/feb_mc.py` flies each named site's February launches 200 times with the
+balloon and forecast varied (`habpred.montecarlo`), and gives each launch P(ok), the
+chance of a landing no harder than KAOS-1:
+
+- ascent: one of 549 real radiosonde climb profiles (rate by altitude), scaled to the
+  planned mean rate with 5% spread; burst altitude +/-1.5 km (1 sd); descent rate
+  +/-10%;
+- forecast error: one of 529 radiosonde landing errors at the matching forecast lead
+  (`scripts/sonde_hindcast.py`), turned to the predicted drift direction and added
+  to the landing. Real flights end on average 3 km further downwind than predicted,
+  and this carries that over.
+
+`scripts/build_mc_inputs.py` rebuilds those inputs into `src/habpred/mcdata/`.
+
+| Launch site (kaos1 profile) | Single forecast ok | Mean P(ok) | Go (P(ok) >= 80%) | Marginal (50-80%) | When the single forecast says ok |
+|---|---|---|---|---|---|
+| Econ River (KAOS-1) | 2% | 2% | 0% | 2% | 46% |
+| Brooksville | 42% | 42% | 1% | 50% | 57% |
+| MOSI | 52% | 50% | 4% | 59% | 60% |
+| Adams Middle | 46% | 50% | 4% | 59% | 63% |
+| Ruskin NWS | 54% | 54% | 6% | 64% | 64% |
+
+The landing cloud is about 10 km across (80% radius), and at that scale central
+Florida is a patchwork of good ground, lakes and marsh. So a launch is rarely a sure
+thing: a Tampa site has about one launch per February with P(ok) >= 80%, but about
+60% of launches are better than even. A single forecast that says "ok" is right about
+60% of the time. The balloon's spread (8 km footprint on its own) matters more than
+forecast error at short lead (5.5 km), so knowing KAOS-2's balloon well shrinks the
+footprint more than better forecasts would. The spreads above are assumptions until
+KAOS-2's balloon is chosen.
+
+![February launches by chance of an ok/easy landing](docs/img/feb_mc_sites.png)
+
+![Landing footprints from MOSI on six February launches](docs/img/feb_mc_footprints.png)
+
 ## Layout
 
 | Path | What |
@@ -165,6 +202,8 @@ refresh them.
 | `src/habpred/atmosphere.py` | Density model for descent-rate scaling |
 | `src/habpred/sources/` | GFS and HRRR downloaders (byte-range GRIB from AWS) |
 | `src/habpred/sondehub.py` | SondeHub API client, for comparisons only |
+| `src/habpred/montecarlo.py` | Monte Carlo sampling of balloon and forecast uncertainty |
+| `src/habpred/sites.py` | Named launch sites and flight profiles |
 | `src/habpred/recover.py` | Landing recoverability raster (build and lookup) |
 | `src/habpred/landmask.py` | Coarse Natural Earth land/water mask |
 | `scripts/` | Hindcasts and comparisons |
@@ -173,4 +212,5 @@ refresh them.
 
 - Ground is a constant altitude (no elevation model yet). Florida is flat, so this
   costs tens of metres.
-- No uncertainty estimate yet: one deterministic path per forecast.
+- Forecast uncertainty is a fixed error distribution from one winter of radiosondes,
+  not the day's weather (ensembles are next).
